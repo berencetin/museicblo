@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import type { User } from '@supabase/supabase-js'
 import { supabase } from './lib/supabase'
 import './App.css'
 
@@ -54,6 +55,8 @@ const STORAGE_KEY = 'between-lines-posts'
 const FAVORITES_KEY = 'between-lines-favorites'
 const BOOKS_KEY = 'between-lines-books'
 const BOOKS_SEED_KEY = 'between-lines-books-seeded-v1'
+const ADMIN_EMAIL =
+  import.meta.env.VITE_ADMIN_EMAIL?.trim().toLocaleLowerCase('en-US') || 'beerencetin@gmail.com'
 
 const starterBooks: ReadingBook[] = [
   {
@@ -199,6 +202,30 @@ function BookCover({ book }: { book: ReadingBook }) {
   )
 }
 
+function mapPostRow(row: {
+  id: string
+  title: string
+  excerpt: string
+  category: string
+  date: string
+  read_time: string
+  image: string
+  body: string
+  published: boolean
+}): Post {
+  return {
+    id: row.id,
+    title: row.title,
+    excerpt: row.excerpt,
+    category: row.category,
+    date: row.date,
+    readTime: row.read_time,
+    image: row.image,
+    body: row.body,
+    published: row.published,
+  }
+}
+
 function App() {
   const [posts, setPosts] = useState<Post[]>(readStoredPosts)
   const [favorites, setFavorites] = useState<string[]>(readFavorites)
@@ -213,6 +240,19 @@ function App() {
   const [editingBookId, setEditingBookId] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [connectionError, setConnectionError] = useState('')
+  const [adminUser, setAdminUser] = useState<User | null>(null)
+  const [authLoading, setAuthLoading] = useState(Boolean(supabase))
+  const [loginEmail, setLoginEmail] = useState(ADMIN_EMAIL)
+  const [loginPassword, setLoginPassword] = useState('')
+  const [authError, setAuthError] = useState('')
+  const [actionError, setActionError] = useState('')
+  const [isSaving, setIsSaving] = useState(false)
+
+  const isAdmin = Boolean(
+    adminUser?.email &&
+    ADMIN_EMAIL &&
+    adminUser.email.toLocaleLowerCase('en-US') === ADMIN_EMAIL,
+  )
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(posts))
@@ -228,17 +268,47 @@ function App() {
 
   useEffect(() => {
     if (!supabase) return
+
+    let active = true
+    const client = supabase
+
+    void client.auth.getSession().then(({ data, error }) => {
+      if (!active) return
+      if (error) {
+        console.error('Oturum bilgisi alınamadı.', error)
+        setAuthError('Oturum bilgisi alınamadı. Sayfayı yenileyip tekrar dene.')
+      }
+      setAdminUser(data.session?.user ?? null)
+      setAuthLoading(false)
+    })
+
+    const { data: authListener } = client.auth.onAuthStateChange((_event, session) => {
+      setAdminUser(session?.user ?? null)
+      setAuthLoading(false)
+      setAuthError('')
+    })
+
+    return () => {
+      active = false
+      authListener.subscription.unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!supabase) return
     const client = supabase
 
     let cancelled = false
 
     async function loadPublicContent() {
+      let postsQuery = client
+        .from('posts')
+        .select('id, title, excerpt, category, date, read_time, image, body, published')
+        .order('created_at', { ascending: false })
+      if (!isAdmin) postsQuery = postsQuery.eq('published', true)
+
       const [postsResult, booksResult] = await Promise.all([
-        client
-          .from('posts')
-          .select('id, title, excerpt, category, date, read_time, image, body, published')
-          .eq('published', true)
-          .order('created_at', { ascending: false }),
+        postsQuery,
         client
           .from('books')
           .select('id, title, author, cover, status, progress, date')
@@ -255,16 +325,11 @@ function App() {
         setConnectionError('')
       }
 
-      if (postsResult.data?.length) {
-        setPosts(
-          postsResult.data.map((post) => ({
-            ...post,
-            readTime: post.read_time,
-          })),
-        )
+      if (postsResult.data) {
+        setPosts(postsResult.data.map(mapPostRow))
       }
 
-      if (booksResult.data?.length) {
+      if (booksResult.data) {
         setBooks(
           booksResult.data.map((book) => ({
             ...book,
@@ -279,7 +344,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [isAdmin])
 
   useEffect(() => {
     const syncPage = () => {
@@ -338,8 +403,43 @@ function App() {
     })
   }
 
-  function savePost(event: React.FormEvent<HTMLFormElement>) {
+  async function signIn(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!supabase) {
+      setAuthError('Supabase yapılandırması bulunamadı. Lütfen site yöneticisine haber ver.')
+      return
+    }
+    if (loginEmail.trim().toLocaleLowerCase('en-US') !== ADMIN_EMAIL) {
+      setAuthError('Bu e-posta yönetici hesabı olarak tanımlı değil.')
+      return
+    }
+    setAuthError('')
+    setAuthLoading(true)
+    const { error } = await supabase.auth.signInWithPassword({
+      email: loginEmail.trim(),
+      password: loginPassword,
+    })
+    setAuthLoading(false)
+    if (error) {
+      console.error('Yönetici girişi başarısız.', error)
+      setAuthError('Giriş yapılamadı. E-posta ve parolayı kontrol et.')
+      return
+    }
+    setLoginPassword('')
+  }
+
+  async function signOut() {
+    if (!supabase) return
+    const { error } = await supabase.auth.signOut()
+    if (error) {
+      console.error('Oturum kapatılamadı.', error)
+      setActionError('Oturum kapatılamadı. Lütfen tekrar dene.')
+    }
+  }
+
+  async function savePost(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase || !isAdmin) return
     const cleanDraft = {
       ...draft,
       title: draft.title.trim(),
@@ -350,37 +450,75 @@ function App() {
     }
     if (!cleanDraft.title || !cleanDraft.body) return
 
-    if (editingPostId) {
-      setPosts((current) =>
-        current.map((post) => (post.id === editingPostId ? { ...post, ...cleanDraft } : post)),
-      )
-    } else {
-      const date = new Intl.DateTimeFormat('tr-TR', {
-        day: '2-digit',
-        month: 'long',
-        year: 'numeric',
-      }).format(new Date())
-      setPosts((current) => [
-        {
-          ...cleanDraft,
-          id: crypto.randomUUID(),
-          date,
-          readTime: `${Math.max(1, Math.ceil(cleanDraft.body.split(/\s+/).length / 200))} dk okuma`,
-          published: false,
-        },
-        ...current,
-      ])
+    setIsSaving(true)
+    setActionError('')
+    const date = new Intl.DateTimeFormat('tr-TR', {
+      day: '2-digit',
+      month: 'long',
+      year: 'numeric',
+    }).format(new Date())
+    const payload = {
+      title: cleanDraft.title,
+      excerpt: cleanDraft.excerpt,
+      category: cleanDraft.category,
+      image: cleanDraft.image,
+      body: cleanDraft.body,
+      date: editingPostId ? posts.find((post) => post.id === editingPostId)?.date ?? date : date,
+      read_time: `${Math.max(1, Math.ceil(cleanDraft.body.split(/\s+/).length / 200))} dk okuma`,
     }
+
+    const result = editingPostId
+      ? await supabase.from('posts').update(payload).eq('id', editingPostId).select().single()
+      : await supabase
+          .from('posts')
+          .insert({ ...payload, id: crypto.randomUUID(), published: false })
+          .select()
+          .single()
+
+    setIsSaving(false)
+    if (result.error) {
+      console.error('Yazı Supabase’e kaydedilemedi.', result.error)
+      setActionError(`Yazı kaydedilemedi: ${result.error.message}`)
+      return
+    }
+    const savedPost = mapPostRow(result.data)
+    setPosts((current) =>
+      editingPostId
+        ? current.map((post) => (post.id === editingPostId ? savedPost : post))
+        : [savedPost, ...current],
+    )
     startNewPost()
   }
 
-  function togglePublished(postId: string) {
-    setPosts((current) =>
-      current.map((post) => (post.id === postId ? { ...post, published: !post.published } : post)),
-    )
+  async function togglePublished(postId: string) {
+    if (!supabase || !isAdmin) return
+    const post = posts.find((item) => item.id === postId)
+    if (!post) return
+    setActionError('')
+    const { data, error } = await supabase
+      .from('posts')
+      .update({ published: !post.published })
+      .eq('id', postId)
+      .select()
+      .single()
+    if (error) {
+      console.error('Yazı yayın durumu güncellenemedi.', error)
+      setActionError(`Yayın durumu değiştirilemedi: ${error.message}`)
+      return
+    }
+    const savedPost = mapPostRow(data)
+    setPosts((current) => current.map((item) => (item.id === postId ? savedPost : item)))
   }
 
-  function deletePost(postId: string) {
+  async function deletePost(postId: string) {
+    if (!supabase || !isAdmin) return
+    setActionError('')
+    const { error } = await supabase.from('posts').delete().eq('id', postId)
+    if (error) {
+      console.error('Yazı silinemedi.', error)
+      setActionError(`Yazı silinemedi: ${error.message}`)
+      return
+    }
     setPosts((current) => current.filter((post) => post.id !== postId))
     setFavorites((current) => current.filter((id) => id !== postId))
     if (editingPostId === postId) startNewPost()
@@ -403,8 +541,9 @@ function App() {
     })
   }
 
-  function saveBook(event: React.FormEvent<HTMLFormElement>) {
+  async function saveBook(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault()
+    if (!supabase || !isAdmin) return
     const cleanBook = {
       ...bookDraft,
       title: bookDraft.title.trim(),
@@ -414,23 +553,101 @@ function App() {
     }
     if (!cleanBook.title || !cleanBook.author) return
 
-    if (editingBookId) {
-      setBooks((current) =>
-        current.map((book) => (book.id === editingBookId ? { ...book, ...cleanBook } : book)),
-      )
-    } else {
-      setBooks((current) => [...current, { ...cleanBook, id: crypto.randomUUID() }])
+    setIsSaving(true)
+    setActionError('')
+    const payload = {
+      title: cleanBook.title,
+      author: cleanBook.author,
+      cover: cleanBook.cover,
+      status: cleanBook.status,
+      progress: cleanBook.progress,
+      date: cleanBook.date || null,
     }
+    const result = editingBookId
+      ? await supabase.from('books').update(payload).eq('id', editingBookId).select().single()
+      : await supabase
+          .from('books')
+          .insert({ ...payload, id: crypto.randomUUID() })
+          .select()
+          .single()
+
+    setIsSaving(false)
+    if (result.error) {
+      console.error('Kitap Supabase’e kaydedilemedi.', result.error)
+      setActionError(`Kitap kaydedilemedi: ${result.error.message}`)
+      return
+    }
+    const savedBook = { ...result.data, date: result.data.date ?? '' } as ReadingBook
+    setBooks((current) =>
+      editingBookId
+        ? current.map((book) => (book.id === editingBookId ? savedBook : book))
+        : [...current, savedBook],
+    )
     resetBookForm()
   }
 
-  function deleteBook(bookId: string) {
+  async function deleteBook(bookId: string) {
+    if (!supabase || !isAdmin) return
+    setActionError('')
+    const { error } = await supabase.from('books').delete().eq('id', bookId)
+    if (error) {
+      console.error('Kitap silinemedi.', error)
+      setActionError(`Kitap silinemedi: ${error.message}`)
+      return
+    }
     setBooks((current) => current.filter((book) => book.id !== bookId))
     if (editingBookId === bookId) resetBookForm()
   }
 
   const publishedCount = posts.filter((post) => post.published).length
   const draftCount = posts.length - publishedCount
+
+  if (page === 'admin' && authLoading) {
+    return (
+      <main className="admin-login-shell">
+        <section className="admin-login-card">
+          <span className="brand-mark"><Feather size={17} /></span>
+          <p className="eyebrow">BETWEEN LINES</p>
+          <h1>Yönetim paneli açılıyor</h1>
+          <p className="admin-subtitle">Güvenli oturum kontrol ediliyor…</p>
+        </section>
+      </main>
+    )
+  }
+
+  if (page === 'admin' && !isAdmin) {
+    return (
+      <main className="admin-login-shell">
+        <form className="admin-login-card" onSubmit={signIn}>
+          <a className="login-back-link" href="#"><ArrowLeft size={15} /> Bloga dön</a>
+          <span className="brand-mark"><Feather size={17} /></span>
+          <p className="eyebrow">YALNIZCA YÖNETİCİ</p>
+          <h1>{adminUser ? 'Bu hesap yetkili değil' : 'Yazı masana dön.'}</h1>
+          <p className="admin-subtitle">
+            {adminUser
+              ? `Yönetim erişimi ${ADMIN_EMAIL} hesabına tanımlı.`
+              : 'Blogunu yönetmek için hesabınla giriş yap.'}
+          </p>
+          {!adminUser && (
+            <>
+              <label>E-posta<input type="email" autoComplete="username" required value={loginEmail} onChange={(event) => setLoginEmail(event.target.value)} /></label>
+              <label>Parola<input type="password" autoComplete="current-password" required value={loginPassword} onChange={(event) => setLoginPassword(event.target.value)} /></label>
+            </>
+          )}
+          {authError && <p className="connection-notice" role="alert">{authError}</p>}
+          {actionError && <p className="connection-notice" role="alert">{actionError}</p>}
+          {!supabase && <p className="connection-notice" role="alert">Supabase bağlantı ayarları yüklenemedi.</p>}
+          {adminUser ? (
+            <button type="button" className="primary-button" onClick={() => void signOut()}>Başka hesapla giriş yap</button>
+          ) : (
+            <button type="submit" className="primary-button" disabled={!supabase || authLoading}>
+              <LockKeyhole size={15} /> Giriş yap
+            </button>
+          )}
+        </form>
+      </main>
+    )
+  }
 
   if (page === 'admin') {
     return (
@@ -453,7 +670,7 @@ function App() {
         <section className="admin-main">
           <header className="admin-topbar">
             <div><span className="breadcrumb">Yönetim paneli</span><span className="breadcrumb-divider">/</span><strong>Genel bakış</strong></div>
-            <span className="preview-badge"><span /> YEREL ÖNİZLEME</span>
+            <div className="admin-topbar-actions"><span className="preview-badge"><span /> SUPABASE’E BAĞLI</span><button className="sign-out-button" onClick={() => void signOut()}>Çıkış yap</button></div>
           </header>
           <div className="admin-content">
             <div className="admin-heading-row">
@@ -465,8 +682,9 @@ function App() {
               <button className="primary-button" onClick={startNewPost}><Plus size={17} /> Yeni yazı oluştur</button>
             </div>
 
-            <div className="local-warning"><LockKeyhole size={18} /><p><strong>Bu panel şu an yerel önizleme modunda.</strong> Yazılar bu tarayıcıda saklanır; gerçek yönetici girişi ve bulut veritabanı için Supabase yapılandırması gerekir.</p></div>
+            <div className="local-warning"><LockKeyhole size={18} /><p><strong>Yönetici oturumu açık: {adminUser?.email}</strong> Yazı ve kitap değişiklikleri Supabase veritabanına kaydedilir.</p></div>
             {connectionError && <p className="connection-notice" role="alert">{connectionError}</p>}
+            {actionError && <p className="connection-notice" role="alert">{actionError}</p>}
 
             <div className="stats-grid">
               <article className="stat-card"><span>YAYINLANAN YAZI</span><strong>{publishedCount}</strong><small><Check size={14} /> Blogda yayında</small></article>
@@ -503,7 +721,7 @@ function App() {
                   <label>Kategori<input required value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} placeholder="Örn. Günlük" /></label>
                   <label>Kapak görseli URL<input type="url" value={draft.image} onChange={(event) => setDraft({ ...draft, image: event.target.value })} placeholder="https://..." /></label>
                   <label>Yazı<textarea required rows={7} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} placeholder="Aklından geçenleri yaz..." /></label>
-                  <div className="form-actions"><button type="button" className="secondary-button" onClick={startNewPost}>Temizle</button><button type="submit" className="primary-button"><Check size={16} /> {editingPostId ? 'Değişiklikleri kaydet' : 'Taslağı kaydet'}</button></div>
+                  <div className="form-actions"><button type="button" className="secondary-button" onClick={startNewPost}>Temizle</button><button type="submit" className="primary-button" disabled={isSaving}><Check size={16} /> {isSaving ? 'Kaydediliyor…' : editingPostId ? 'Değişiklikleri kaydet' : 'Taslağı kaydet'}</button></div>
                 </form>
               </section>
             </div>
@@ -538,7 +756,7 @@ function App() {
                     <label>Okuma durumu<select value={bookDraft.status} onChange={(event) => setBookDraft({ ...bookDraft, status: event.target.value as ReadingBook['status'] })}><option value="currently-reading">Şu an okuyorum</option><option value="last-read">Son okuduklarımdan</option></select></label>
                     <label>{bookDraft.status === 'currently-reading' ? 'İlerleme (%)' : 'Okuma tarihi'}{bookDraft.status === 'currently-reading' ? <input type="number" min="0" max="100" value={bookDraft.progress} onChange={(event) => setBookDraft({ ...bookDraft, progress: Number(event.target.value) })} /> : <input type="date" value={bookDraft.date} onChange={(event) => setBookDraft({ ...bookDraft, date: event.target.value })} />}</label>
                   </div>
-                  <div className="form-actions"><button type="button" className="secondary-button" onClick={resetBookForm}>Temizle</button><button type="submit" className="primary-button"><Check size={15} /> {editingBookId ? 'Kaydet' : 'Kitabı ekle'}</button></div>
+                  <div className="form-actions"><button type="button" className="secondary-button" onClick={resetBookForm}>Temizle</button><button type="submit" className="primary-button" disabled={isSaving}><Check size={15} /> {isSaving ? 'Kaydediliyor…' : editingBookId ? 'Kaydet' : 'Kitabı ekle'}</button></div>
                 </form>
               </div>
             </section>
