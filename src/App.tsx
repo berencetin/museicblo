@@ -21,6 +21,7 @@ import {
   Trash2,
   X,
 } from 'lucide-react'
+import { supabase } from './lib/supabase'
 import './App.css'
 
 type Post = {
@@ -211,6 +212,7 @@ function App() {
   const [bookDraft, setBookDraft] = useState<ReadingBookDraft>(emptyBookDraft)
   const [editingBookId, setEditingBookId] = useState<string | null>(null)
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [connectionError, setConnectionError] = useState('')
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(posts))
@@ -223,6 +225,61 @@ function App() {
   useEffect(() => {
     localStorage.setItem(BOOKS_KEY, JSON.stringify(books))
   }, [books])
+
+  useEffect(() => {
+    if (!supabase) return
+    const client = supabase
+
+    let cancelled = false
+
+    async function loadPublicContent() {
+      const [postsResult, booksResult] = await Promise.all([
+        client
+          .from('posts')
+          .select('id, title, excerpt, category, date, read_time, image, body, published')
+          .eq('published', true)
+          .order('created_at', { ascending: false }),
+        client
+          .from('books')
+          .select('id, title, author, cover, status, progress, date')
+          .order('date', { ascending: false }),
+      ])
+
+      if (cancelled) return
+
+      const errors = [postsResult.error, booksResult.error].filter(Boolean)
+      if (errors.length) {
+        console.error('Supabase içerikleri yüklenemedi.', errors)
+        setConnectionError('İçerikler veritabanından yüklenemedi; örnek içerik gösteriliyor. Lütfen daha sonra tekrar deneyin.')
+      } else {
+        setConnectionError('')
+      }
+
+      if (postsResult.data?.length) {
+        setPosts(
+          postsResult.data.map((post) => ({
+            ...post,
+            readTime: post.read_time,
+          })),
+        )
+      }
+
+      if (booksResult.data?.length) {
+        setBooks(
+          booksResult.data.map((book) => ({
+            ...book,
+            date: book.date ?? '',
+          })) as ReadingBook[],
+        )
+      }
+    }
+
+    void loadPublicContent()
+
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   useEffect(() => {
     const syncPage = () => {
@@ -409,6 +466,7 @@ function App() {
             </div>
 
             <div className="local-warning"><LockKeyhole size={18} /><p><strong>Bu panel şu an yerel önizleme modunda.</strong> Yazılar bu tarayıcıda saklanır; gerçek yönetici girişi ve bulut veritabanı için Supabase yapılandırması gerekir.</p></div>
+            {connectionError && <p className="connection-notice" role="alert">{connectionError}</p>}
 
             <div className="stats-grid">
               <article className="stat-card"><span>YAYINLANAN YAZI</span><strong>{publishedCount}</strong><small><Check size={14} /> Blogda yayında</small></article>
@@ -549,6 +607,8 @@ function App() {
               </div>
               <span className="hero-index">01 — 03</span>
             </section>
+
+            {connectionError && <p className="connection-notice" role="alert">{connectionError}</p>}
 
             <section className="reading-shelf" aria-labelledby="reading-title">
               <div className="reading-heading">

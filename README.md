@@ -9,6 +9,8 @@ npm install
 npm run dev
 ```
 
+Yerel Supabase bağlantısı için `.env.example` dosyasını `.env.local` olarak kopyalayın ve Supabase proje URL'si ile publishable key'i ekleyin. `.env.local` Git'e gönderilmez. Cloudflare Workers Builds kullanırken aynı `VITE_SUPABASE_URL` ve `VITE_SUPABASE_PUBLISHABLE_KEY` değerlerini Worker'ın **Settings → Builds → Build variables and secrets** bölümüne ekleyin.
+
 Üretim derlemesini doğrulamak için:
 
 ```bash
@@ -24,6 +26,7 @@ npm run preview
 - Başlangıç okuma rafı: José Saramago'nun *Körlük* kitabı ve Han Kang'ın *Vejetaryen* kitabı
 - Yerel yönetim önizlemesi: yazı ve kitap ekleme, düzenleme, silme; yazı taslaklarını yönetme ve yayımlama
 - Yazılar, kitaplar ve favoriler tarayıcının `localStorage` alanında saklanır
+- Supabase yapılandırıldığında yayımlanmış yazılar ve kitaplık herkese açık olarak veritabanından okunur
 
 Yönetim paneli şu anda yalnızca yerel önizlemedir; güvenli yönetici girişi veya cihazlar arası senkronizasyon sağlamaz. Üretim kullanımı için Supabase Auth, veritabanı ve Row Level Security bağlanmalıdır. Blog kapak fotoğrafları ve Google Fonts internet bağlantısı gerektirir.
 

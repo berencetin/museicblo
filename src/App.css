@@ -872,6 +872,16 @@ a {
   text-align: center;
 }
 
+.connection-notice {
+  margin: 14px 0;
+  padding: 10px 12px;
+  border: 1px solid #e8d9bf;
+  color: #806b4e;
+  background: #f7f1e7;
+  font-size: 10px;
+  line-height: 1.6;
+}
+
 .empty-state h3 {
   margin: 13px 0 6px;
   color: #273853;
@@ -1883,6 +1893,10 @@ a {
 
   .stories-section {
     padding: 39px 0 43px;
+  }
+
+  .connection-notice {
+    font-size: 9px;
   }
 
   .reading-shelf {
