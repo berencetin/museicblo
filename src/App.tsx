@@ -1,0 +1,610 @@
+import { useEffect, useMemo, useState } from 'react'
+import {
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUpRight,
+  Bookmark,
+  BookOpen,
+  BookMarked,
+  Check,
+  ChevronDown,
+  Feather,
+  Heart,
+  LayoutDashboard,
+  LockKeyhole,
+  Menu,
+  Plus,
+  Search,
+  Settings2,
+  Sparkles,
+  Trash2,
+  X,
+} from 'lucide-react'
+import './App.css'
+
+type Post = {
+  id: string
+  title: string
+  excerpt: string
+  category: string
+  date: string
+  readTime: string
+  image: string
+  body: string
+  published: boolean
+}
+
+type PostDraft = Pick<Post, 'title' | 'excerpt' | 'category' | 'image' | 'body'>
+
+type ReadingBook = {
+  id: string
+  title: string
+  author: string
+  cover: string
+  status: 'currently-reading' | 'last-read'
+  progress: number
+  date: string
+}
+
+type ReadingBookDraft = Omit<ReadingBook, 'id'>
+
+const STORAGE_KEY = 'between-lines-posts'
+const FAVORITES_KEY = 'between-lines-favorites'
+const BOOKS_KEY = 'between-lines-books'
+
+const starterPosts: Post[] = [
+  {
+    id: 'slow-down',
+    title: 'Biraz yavaşlamak üzerine',
+    excerpt: 'Hayatın hızına kısa bir ara vermek, bazen kendimize verebileceğimiz en güzel hediye.',
+    category: 'Düşünceler',
+    date: '02 Kasım 2026',
+    readTime: '4 dk okuma',
+    image:
+      'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&w=1400&q=85',
+    body: `Son zamanlarda her şeyin biraz daha hızlı olması gerektiğini düşünüyoruz. Daha hızlı cevaplar, daha dolu takvimler, araya sıkıştırılmış küçük molalar.\n\nOysa bazen en iyi yaptığımız şey, hiçbir yere yetişmeye çalışmadan olduğumuz yerde kalmak. Pencereden süzülen ışığı izlemek, kahvenin soğumasına izin vermek, bir cümleyi acele etmeden tamamlamak.\n\nYavaşlamak geride kalmak değil. Bazen kendimize yeniden yetişmenin tek yolu.`,
+    published: true,
+  },
+  {
+    id: 'small-moments',
+    title: 'Küçük anların güzelliği',
+    excerpt: 'Bir fincan kahve, açık bir pencere ve henüz adını koymadığımız o sakinlik.',
+    category: 'Günlük',
+    date: '31 Ekim 2026',
+    readTime: '3 dk okuma',
+    image:
+      'https://images.unsplash.com/photo-1445116572660-236099ec97a0?auto=format&fit=crop&w=1000&q=85',
+    body: `Bazı günler, akılda kalan şey büyük bir olay olmuyor. Sabah mutfağa düşen ışık, yolda duyduğumuz bir şarkı ya da tam ihtiyacımız varken gelen kısa bir mesaj.\n\nBelki de güzel bir hayat, böyle küçük parçaların yan yana gelmesinden ibaret. Onları fark etmek için biraz durmak yeterli.`,
+    published: true,
+  },
+  {
+    id: 'sea-thoughts',
+    title: 'Denize benzeyen düşünceler',
+    excerpt: 'Bazı düşünceler kıyıya vurur, bazılarıysa sessizce uzaklaşır.',
+    category: 'Hayat',
+    date: '28 Ekim 2026',
+    readTime: '5 dk okuma',
+    image:
+      'https://images.unsplash.com/photo-1473116763249-2faaef81ccda?auto=format&fit=crop&w=1000&q=85',
+    body: `Denizin kıyısında düşünceler de dalgalar gibi geliyor. Biri biraz kalıyor, diğeri iz bırakmadan geri çekiliyor.\n\nHepsini anlamlandırmak zorunda değiliz. Bazen yalnızca gelip geçmelerine izin vermek, içimizde yer açıyor.`,
+    published: true,
+  },
+]
+
+const emptyDraft: PostDraft = {
+  title: '',
+  excerpt: '',
+  category: 'Düşünceler',
+  image: '',
+  body: '',
+}
+
+const emptyBookDraft: ReadingBookDraft = {
+  title: '',
+  author: '',
+  cover: '',
+  status: 'currently-reading',
+  progress: 0,
+  date: new Date().toISOString().slice(0, 10),
+}
+
+function readStoredPosts(): Post[] {
+  const saved = localStorage.getItem(STORAGE_KEY)
+  if (!saved) return starterPosts
+
+  try {
+    const parsed: unknown = JSON.parse(saved)
+    if (Array.isArray(parsed)) return parsed as Post[]
+    console.error('Kayıtlı yazılar beklenen biçimde değil; örnek yazılar gösteriliyor.')
+  } catch (error) {
+    console.error('Kayıtlı yazılar okunamadı; örnek yazılar gösteriliyor.', error)
+  }
+  return starterPosts
+}
+
+function readFavorites(): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(FAVORITES_KEY) ?? '[]')
+    return Array.isArray(parsed) && parsed.every((value) => typeof value === 'string')
+      ? parsed
+      : []
+  } catch (error) {
+    console.error('Favoriler okunamadı.', error)
+    return []
+  }
+}
+
+function readBooks(): ReadingBook[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(BOOKS_KEY) ?? '[]')
+    if (
+      Array.isArray(parsed) &&
+      parsed.every(
+        (book) =>
+          typeof book.id === 'string' &&
+          typeof book.title === 'string' &&
+          typeof book.author === 'string' &&
+          typeof book.cover === 'string' &&
+          (book.status === 'currently-reading' || book.status === 'last-read') &&
+          typeof book.progress === 'number' &&
+          typeof book.date === 'string',
+      )
+    ) {
+      return parsed
+    }
+    console.error('Kayıtlı kitaplar beklenen biçimde değil; boş liste gösteriliyor.')
+  } catch (error) {
+    console.error('Kayıtlı kitaplar okunamadı; boş liste gösteriliyor.', error)
+  }
+  return []
+}
+
+function BookCover({ book }: { book: ReadingBook }) {
+  return (
+    <div className="book-cover" aria-label={`${book.title} kitap kapağı`}>
+      {book.cover ? <img src={book.cover} alt="" /> : <span className="cover-placeholder"><BookOpen size={22} /><span>BETWEEN<br />THE LINES</span></span>}
+    </div>
+  )
+}
+
+function App() {
+  const [posts, setPosts] = useState<Post[]>(readStoredPosts)
+  const [favorites, setFavorites] = useState<string[]>(readFavorites)
+  const [books, setBooks] = useState<ReadingBook[]>(readBooks)
+  const [search, setSearch] = useState('')
+  const [category, setCategory] = useState('Tüm kategoriler')
+  const [page, setPage] = useState('home')
+  const [activePostId, setActivePostId] = useState('')
+  const [editingPostId, setEditingPostId] = useState<string | null>(null)
+  const [draft, setDraft] = useState<PostDraft>(emptyDraft)
+  const [bookDraft, setBookDraft] = useState<ReadingBookDraft>(emptyBookDraft)
+  const [editingBookId, setEditingBookId] = useState<string | null>(null)
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(posts))
+  }, [posts])
+
+  useEffect(() => {
+    localStorage.setItem(FAVORITES_KEY, JSON.stringify(favorites))
+  }, [favorites])
+
+  useEffect(() => {
+    localStorage.setItem(BOOKS_KEY, JSON.stringify(books))
+  }, [books])
+
+  useEffect(() => {
+    const syncPage = () => {
+      const [route, postId] = window.location.hash.slice(1).split('/')
+      setPage(route || 'home')
+      setActivePostId(postId ?? '')
+      setMobileMenuOpen(false)
+    }
+
+    syncPage()
+    window.addEventListener('hashchange', syncPage)
+    return () => window.removeEventListener('hashchange', syncPage)
+  }, [])
+
+  const categories = useMemo(
+    () => ['Tüm kategoriler', ...new Set(posts.filter((post) => post.published).map((post) => post.category))],
+    [posts],
+  )
+
+  const visiblePosts = useMemo(() => {
+    const normalizedSearch = search.trim().toLocaleLowerCase('tr')
+    return posts.filter((post) => {
+      const matchesSearch =
+        !normalizedSearch ||
+        `${post.title} ${post.excerpt} ${post.category}`.toLocaleLowerCase('tr').includes(normalizedSearch)
+      const matchesCategory = category === 'Tüm kategoriler' || post.category === category
+      return post.published && matchesSearch && matchesCategory
+    })
+  }, [category, posts, search])
+
+  const activePost = posts.find((post) => post.id === activePostId && post.published)
+
+  function navigate(route: string) {
+    window.location.hash = route
+  }
+
+  function toggleFavorite(postId: string) {
+    setFavorites((current) =>
+      current.includes(postId) ? current.filter((id) => id !== postId) : [...current, postId],
+    )
+  }
+
+  function startNewPost() {
+    setEditingPostId(null)
+    setDraft(emptyDraft)
+  }
+
+  function editPost(post: Post) {
+    setEditingPostId(post.id)
+    setDraft({
+      title: post.title,
+      excerpt: post.excerpt,
+      category: post.category,
+      image: post.image,
+      body: post.body,
+    })
+  }
+
+  function savePost(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const cleanDraft = {
+      ...draft,
+      title: draft.title.trim(),
+      excerpt: draft.excerpt.trim(),
+      category: draft.category.trim(),
+      image: draft.image.trim(),
+      body: draft.body.trim(),
+    }
+    if (!cleanDraft.title || !cleanDraft.body) return
+
+    if (editingPostId) {
+      setPosts((current) =>
+        current.map((post) => (post.id === editingPostId ? { ...post, ...cleanDraft } : post)),
+      )
+    } else {
+      const date = new Intl.DateTimeFormat('tr-TR', {
+        day: '2-digit',
+        month: 'long',
+        year: 'numeric',
+      }).format(new Date())
+      setPosts((current) => [
+        {
+          ...cleanDraft,
+          id: crypto.randomUUID(),
+          date,
+          readTime: `${Math.max(1, Math.ceil(cleanDraft.body.split(/\s+/).length / 200))} dk okuma`,
+          published: false,
+        },
+        ...current,
+      ])
+    }
+    startNewPost()
+  }
+
+  function togglePublished(postId: string) {
+    setPosts((current) =>
+      current.map((post) => (post.id === postId ? { ...post, published: !post.published } : post)),
+    )
+  }
+
+  function deletePost(postId: string) {
+    setPosts((current) => current.filter((post) => post.id !== postId))
+    setFavorites((current) => current.filter((id) => id !== postId))
+    if (editingPostId === postId) startNewPost()
+  }
+
+  function resetBookForm() {
+    setEditingBookId(null)
+    setBookDraft(emptyBookDraft)
+  }
+
+  function editBook(book: ReadingBook) {
+    setEditingBookId(book.id)
+    setBookDraft({
+      title: book.title,
+      author: book.author,
+      cover: book.cover,
+      status: book.status,
+      progress: book.progress,
+      date: book.date,
+    })
+  }
+
+  function saveBook(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    const cleanBook = {
+      ...bookDraft,
+      title: bookDraft.title.trim(),
+      author: bookDraft.author.trim(),
+      cover: bookDraft.cover.trim(),
+      progress: Math.max(0, Math.min(100, Number(bookDraft.progress) || 0)),
+    }
+    if (!cleanBook.title || !cleanBook.author) return
+
+    if (editingBookId) {
+      setBooks((current) =>
+        current.map((book) => (book.id === editingBookId ? { ...book, ...cleanBook } : book)),
+      )
+    } else {
+      setBooks((current) => [...current, { ...cleanBook, id: crypto.randomUUID() }])
+    }
+    resetBookForm()
+  }
+
+  function deleteBook(bookId: string) {
+    setBooks((current) => current.filter((book) => book.id !== bookId))
+    if (editingBookId === bookId) resetBookForm()
+  }
+
+  const publishedCount = posts.filter((post) => post.published).length
+  const draftCount = posts.length - publishedCount
+
+  if (page === 'admin') {
+    return (
+      <main className="admin-shell">
+        <aside className="admin-sidebar">
+          <a className="admin-brand" href="#" onClick={() => navigate('home')}>
+            <span className="brand-mark"><Feather size={17} /></span>
+            <span>BETWEEN LINES<small>YAZI ATÖLYESİ</small></span>
+          </a>
+          <p className="sidebar-label">ÇALIŞMA ALANI</p>
+          <button className="sidebar-link active"><LayoutDashboard size={17} /> Genel bakış</button>
+          <button className="sidebar-link" onClick={startNewPost}><Plus size={17} /> Yeni yazı</button>
+          <div className="sidebar-bottom">
+            <span className="sidebar-label">GÖRÜNÜM</span>
+            <button className="sidebar-link" onClick={() => navigate('home')}><ArrowUpRight size={17} /> Blogu görüntüle</button>
+            <div className="admin-user"><span className="avatar">B</span><span>Blog yazarı<small>Yerel önizleme</small></span><Settings2 size={16} /></div>
+          </div>
+        </aside>
+
+        <section className="admin-main">
+          <header className="admin-topbar">
+            <div><span className="breadcrumb">Yönetim paneli</span><span className="breadcrumb-divider">/</span><strong>Genel bakış</strong></div>
+            <span className="preview-badge"><span /> YEREL ÖNİZLEME</span>
+          </header>
+          <div className="admin-content">
+            <div className="admin-heading-row">
+              <div>
+                <p className="eyebrow">YAZI MASANA HOŞ GELDİN</p>
+                <h1>Günaydın, yazar.</h1>
+                <p className="admin-subtitle">Aklındaki kelimelere burada yer aç.</p>
+              </div>
+              <button className="primary-button" onClick={startNewPost}><Plus size={17} /> Yeni yazı oluştur</button>
+            </div>
+
+            <div className="local-warning"><LockKeyhole size={18} /><p><strong>Bu panel şu an yerel önizleme modunda.</strong> Yazılar bu tarayıcıda saklanır; gerçek yönetici girişi ve bulut veritabanı için Supabase yapılandırması gerekir.</p></div>
+
+            <div className="stats-grid">
+              <article className="stat-card"><span>YAYINLANAN YAZI</span><strong>{publishedCount}</strong><small><Check size={14} /> Blogda yayında</small></article>
+              <article className="stat-card"><span>TASLAK</span><strong>{draftCount}</strong><small><Bookmark size={14} /> Üzerinde çalışılıyor</small></article>
+              <article className="stat-card"><span>FAVORİLER</span><strong>{favorites.length}</strong><small><Heart size={14} /> Okuyucuların seçimi</small></article>
+            </div>
+
+            <div className="editor-layout">
+              <section className="panel-card post-manager">
+                <div className="panel-heading"><div><p className="eyebrow">İÇERİK</p><h2>Yazıların</h2></div><span className="count-pill">{posts.length} yazı</span></div>
+                <div className="managed-posts">
+                  {posts.map((post) => (
+                    <article className="managed-post" key={post.id}>
+                      <div className="managed-post-copy">
+                        <span className={post.published ? 'status status-live' : 'status status-draft'}>{post.published ? 'YAYINDA' : 'TASLAK'}</span>
+                        <h3>{post.title || 'Başlıksız yazı'}</h3>
+                        <span>{post.category} <i>·</i> {post.date}</span>
+                      </div>
+                      <div className="managed-actions">
+                        <button className="text-button" onClick={() => editPost(post)}>Düzenle</button>
+                        <button className="icon-button danger" aria-label={`${post.title} yazısını sil`} onClick={() => deletePost(post.id)}><Trash2 size={16} /></button>
+                        <button className="publish-toggle" onClick={() => togglePublished(post.id)}>{post.published ? 'Yayından kaldır' : 'Yayınla'}</button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="panel-card editor-card">
+                <div className="panel-heading"><div><p className="eyebrow">{editingPostId ? 'DÜZENLEME' : 'YENİ TASLAK'}</p><h2>{editingPostId ? 'Yazıyı düzenle' : 'Hızlı yazı'}</h2></div><span className="editor-icon"><Feather size={18} /></span></div>
+                <form className="post-form" onSubmit={savePost}>
+                  <label>Başlık<input required value={draft.title} onChange={(event) => setDraft({ ...draft, title: event.target.value })} placeholder="Yazına bir başlık ver" /></label>
+                  <label>Kısa açıklama<textarea rows={2} value={draft.excerpt} onChange={(event) => setDraft({ ...draft, excerpt: event.target.value })} placeholder="Okura küçük bir ipucu..." /></label>
+                  <label>Kategori<input required value={draft.category} onChange={(event) => setDraft({ ...draft, category: event.target.value })} placeholder="Örn. Günlük" /></label>
+                  <label>Kapak görseli URL<input type="url" value={draft.image} onChange={(event) => setDraft({ ...draft, image: event.target.value })} placeholder="https://..." /></label>
+                  <label>Yazı<textarea required rows={7} value={draft.body} onChange={(event) => setDraft({ ...draft, body: event.target.value })} placeholder="Aklından geçenleri yaz..." /></label>
+                  <div className="form-actions"><button type="button" className="secondary-button" onClick={startNewPost}>Temizle</button><button type="submit" className="primary-button"><Check size={16} /> {editingPostId ? 'Değişiklikleri kaydet' : 'Taslağı kaydet'}</button></div>
+                </form>
+              </section>
+            </div>
+
+            <section className="panel-card reading-manager">
+              <div className="panel-heading">
+                <div><p className="eyebrow">OKUMA GÜNLÜĞÜ</p><h2>Kitaplığım</h2></div>
+                <span className="count-pill">{books.length} kitap</span>
+              </div>
+              <div className="reading-admin-layout">
+                <div className="managed-books">
+                  {books.length === 0 && <p className="empty-books-hint">Henüz kitap eklemedin. Şu an okuduklarını ve en son bitirdiklerini buradan paylaşabilirsin.</p>}
+                  {books.map((book) => (
+                    <article className="managed-book" key={book.id}>
+                      <span className={`book-status ${book.status}`}>{book.status === 'currently-reading' ? 'ŞU AN OKUYORUM' : 'SON OKUDUKLARIMDAN'}</span>
+                      <strong>{book.title}</strong>
+                      <small>{book.author}</small>
+                      {book.status === 'currently-reading' && <span className="managed-progress">%{book.progress} tamamlandı</span>}
+                      <div className="managed-book-actions">
+                        <button className="text-button" onClick={() => editBook(book)}>Düzenle</button>
+                        <button className="icon-button danger" aria-label={`${book.title} kitabını sil`} onClick={() => deleteBook(book.id)}><Trash2 size={15} /></button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+                <form className="post-form book-form" onSubmit={saveBook}>
+                  <p className="book-form-title">{editingBookId ? 'Kitabı düzenle' : 'Kitap ekle'}</p>
+                  <label>Kitap adı<input required value={bookDraft.title} onChange={(event) => setBookDraft({ ...bookDraft, title: event.target.value })} placeholder="Kitabın adı" /></label>
+                  <label>Yazar<input required value={bookDraft.author} onChange={(event) => setBookDraft({ ...bookDraft, author: event.target.value })} placeholder="Yazarın adı" /></label>
+                  <label>Kapak görseli URL<input type="url" value={bookDraft.cover} onChange={(event) => setBookDraft({ ...bookDraft, cover: event.target.value })} placeholder="İsteğe bağlı: https://..." /></label>
+                  <div className="book-form-row">
+                    <label>Okuma durumu<select value={bookDraft.status} onChange={(event) => setBookDraft({ ...bookDraft, status: event.target.value as ReadingBook['status'] })}><option value="currently-reading">Şu an okuyorum</option><option value="last-read">Son okuduklarımdan</option></select></label>
+                    <label>{bookDraft.status === 'currently-reading' ? 'İlerleme (%)' : 'Okuma tarihi'}{bookDraft.status === 'currently-reading' ? <input type="number" min="0" max="100" value={bookDraft.progress} onChange={(event) => setBookDraft({ ...bookDraft, progress: Number(event.target.value) })} /> : <input type="date" value={bookDraft.date} onChange={(event) => setBookDraft({ ...bookDraft, date: event.target.value })} />}</label>
+                  </div>
+                  <div className="form-actions"><button type="button" className="secondary-button" onClick={resetBookForm}>Temizle</button><button type="submit" className="primary-button"><Check size={15} /> {editingBookId ? 'Kaydet' : 'Kitabı ekle'}</button></div>
+                </form>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    )
+  }
+
+  return (
+    <div className="site-shell">
+      <div className="ambient ambient-one" />
+      <div className="ambient ambient-two" />
+      <main className="site-frame">
+        <header className="site-header">
+          <a className="wordmark" href="#" onClick={() => navigate('home')}>
+            <span className="wordmark-icon"><Feather size={19} strokeWidth={1.7} /></span>
+            <span>BETWEEN <i>LINES</i><small>NOTLAR, ANILAR VE KÜÇÜK ŞEYLER</small></span>
+          </a>
+          <button className="mobile-menu-button" aria-label="Menüyü aç" onClick={() => setMobileMenuOpen((open) => !open)}>{mobileMenuOpen ? <X /> : <Menu />}</button>
+          <nav className={mobileMenuOpen ? 'main-nav nav-open' : 'main-nav'}>
+            <a className={page === 'home' || page === 'post' ? 'nav-active' : ''} href="#" onClick={() => navigate('home')}>Yazılar</a>
+            <a className={page === 'about' ? 'nav-active' : ''} href="#about" onClick={() => navigate('about')}>Hakkımda</a>
+            <a className="nav-note" href="#admin" onClick={() => navigate('admin')} aria-label="Yönetim panelini aç"><LayoutDashboard size={16} /></a>
+          </nav>
+        </header>
+
+        {page === 'post' && activePost ? (
+          <article className="article-page">
+            <button className="back-link" onClick={() => navigate('home')}><ArrowLeft size={16} /> Tüm yazılara dön</button>
+            <div className="article-cover" style={{ backgroundImage: `url("${activePost.image}")` }} />
+            <div className="article-content">
+              <span className="article-category">{activePost.category}</span>
+              <h1>{activePost.title}</h1>
+              <p className="article-deck">{activePost.excerpt}</p>
+              <div className="article-meta">{activePost.date}<span>·</span>{activePost.readTime}</div>
+              <div className="article-body">{activePost.body.split('\n\n').map((paragraph) => <p key={paragraph}>{paragraph}</p>)}</div>
+              <button className={favorites.includes(activePost.id) ? 'favorite-button favorite-active' : 'favorite-button'} onClick={() => toggleFavorite(activePost.id)}><Heart size={17} fill={favorites.includes(activePost.id) ? 'currentColor' : 'none'} /> {favorites.includes(activePost.id) ? 'Favorilerimde' : 'Bu yazıyı kaydet'}</button>
+            </div>
+          </article>
+        ) : page === 'about' ? (
+          <section className="about-page">
+            <div className="about-kicker"><Sparkles size={16} /> BİR KÜÇÜK MERHABA</div>
+            <h1>Merhaba, ben<br /><em>bu satırların</em> yazarı.</h1>
+            <p className="about-lead">Between Lines; kelimelerin, anıların ve hayatın arasından topladığım küçük parçalar için açtığım sakin bir köşe.</p>
+            <div className="about-divider" />
+            <p>Burada bazen yavaşlamak üzerine, bazen de sıradan bir günün içinden sızan güzel bir an üzerine yazıyorum. Bir fincan kahven varsa, hoş geldin.</p>
+            <button className="primary-button" onClick={() => navigate('home')}>Yazıları keşfet <ArrowRight size={16} /></button>
+          </section>
+        ) : (
+          <>
+            <section className="hero">
+              <div className="hero-copy">
+                <span className="hero-overline"><span /> KELİMELERİN ARASINDA BİR YER</span>
+                <h1>Stories <i>&</i><br />Thoughts<span>.</span></h1>
+                <p>Kelimeler, anılar ve hayatın arasından<br className="desktop-break" /> küçük parçalar.</p>
+                <a className="discover-link" href="#stories" onClick={() => document.getElementById('stories')?.scrollIntoView({ behavior: 'smooth' })}>Yazıları keşfet <ArrowDown size={15} /></a>
+              </div>
+              <div className="hero-art">
+                <div className="hero-photo">
+                  <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=85" alt="Gün batımında sessiz bir sahil manzarası" />
+                  <span className="photo-caption">BİR YERDE, BİR ZAMAN</span>
+                </div>
+                <div className="hero-stamp"><span>EST.</span><strong>20<br />26</strong><i>✳</i></div>
+                <span className="hero-scribble">take your time</span>
+              </div>
+              <span className="hero-index">01 — 03</span>
+            </section>
+
+            <section className="reading-shelf" aria-labelledby="reading-title">
+              <div className="reading-heading">
+                <div><span className="eyebrow">KİTAPLIĞIMDAN</span><h2 id="reading-title">Aralarda, kitaplarla.</h2></div>
+                <span className="reading-heading-note">Okuduklarım ve aklımda kalanlar.</span>
+              </div>
+              <div className="reading-columns">
+                <section className="reading-column" aria-labelledby="currently-reading-title">
+                  <div className="reading-column-heading"><BookOpen size={16} /><h3 id="currently-reading-title">Currently reading</h3><span>{books.filter((book) => book.status === 'currently-reading').length.toString().padStart(2, '0')}</span></div>
+                  {books.filter((book) => book.status === 'currently-reading').length ? (
+                    <div className="reading-book-list">
+                      {books.filter((book) => book.status === 'currently-reading').map((book) => (
+                        <article className="reading-book" key={book.id}>
+                          <BookCover book={book} />
+                          <div className="reading-book-info"><span className="book-kicker">ŞU AN OKUYORUM</span><h4>{book.title}</h4><p>{book.author}</p><div className="progress-label"><span>Okuma ilerlemesi</span><span>%{book.progress}</span></div><div className="progress-track"><span style={{ width: `${book.progress}%` }} /></div></div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p className="reading-empty">Şu sıralar okuduğum kitaplar burada olacak.</p>}
+                </section>
+                <section className="reading-column last-reading" aria-labelledby="last-reading-title">
+                  <div className="reading-column-heading"><BookMarked size={16} /><h3 id="last-reading-title">Last read</h3><span>{books.filter((book) => book.status === 'last-read').length.toString().padStart(2, '0')}</span></div>
+                  {books.filter((book) => book.status === 'last-read').length ? (
+                    <div className="reading-book-list">
+                      {books.filter((book) => book.status === 'last-read').map((book) => (
+                        <article className="reading-book last-book" key={book.id}>
+                          <BookCover book={book} />
+                          <div className="reading-book-info"><span className="book-kicker">SON OKUDUKLARIMDAN</span><h4>{book.title}</h4><p>{book.author}</p><span className="book-finished-date">{book.date ? new Intl.DateTimeFormat('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' }).format(new Date(`${book.date}T12:00:00`)) : 'Okuma günlüğümden'}</span></div>
+                        </article>
+                      ))}
+                    </div>
+                  ) : <p className="reading-empty">Bitirdiğim son kitaplar burada birikecek.</p>}
+                </section>
+              </div>
+              <button className="reading-manage-link" onClick={() => navigate('admin')}><span>Okuma günlüğüm</span><ArrowUpRight size={14} /></button>
+            </section>
+
+            <section className="stories-section" id="stories">
+              <div className="section-heading">
+                <div><span className="eyebrow">SON NOTLAR</span><h2>Okumak için<br className="mobile-break" /> bir şeyler.</h2></div>
+                <span className="section-note">Yavaşça oku. Kendinden bir parça bul.</span>
+              </div>
+              <div className="filter-bar">
+                <label className="search-field"><Search size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Yazılarda ara..." aria-label="Yazılarda ara" />{search && <button aria-label="Aramayı temizle" onClick={() => setSearch('')}><X size={15} /></button>}</label>
+                <label className="category-select"><span className="sr-only">Kategori seç</span><select value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item}>{item}</option>)}</select><ChevronDown size={15} /></label>
+              </div>
+
+              {visiblePosts.length ? (
+                <div className="story-grid">
+                  {visiblePosts.map((post, index) => (
+                    <article className={`story-card story-card-${index % 3}`} key={post.id}>
+                      <button className="story-image" onClick={() => navigate(`post/${post.id}`)} aria-label={`${post.title} yazısını oku`}>
+                        <img src={post.image || 'https://images.unsplash.com/photo-1470252649378-9c29740c9fa8?auto=format&fit=crop&w=1000&q=80'} alt="" loading="lazy" />
+                        <span className="image-number">0{index + 1}</span>
+                        <span className="image-arrow"><ArrowUpRight size={18} /></span>
+                      </button>
+                      <div className="story-copy">
+                        <div className="story-meta"><span>{post.category}</span><i />{post.date}</div>
+                        <div className="story-title-row"><button className="story-title" onClick={() => navigate(`post/${post.id}`)}>{post.title}</button><button className={favorites.includes(post.id) ? 'save-button saved' : 'save-button'} aria-label={favorites.includes(post.id) ? 'Favorilerden çıkar' : 'Favorilere ekle'} onClick={() => toggleFavorite(post.id)}><Heart size={17} fill={favorites.includes(post.id) ? 'currentColor' : 'none'} /></button></div>
+                        <p>{post.excerpt}</p>
+                        <button className="read-link" onClick={() => navigate(`post/${post.id}`)}>Devamını oku <ArrowRight size={15} /></button>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state"><Search size={24} /><h3>Burada henüz bir not yok.</h3><p>Başka bir kelime ya da kategoriyle tekrar deneyebilirsin.</p><button className="text-button" onClick={() => { setSearch(''); setCategory('Tüm kategoriler') }}>Filtreleri temizle</button></div>
+              )}
+            </section>
+
+            <section className="newsletter">
+              <div className="newsletter-mark"><Feather size={19} /></div>
+              <div><span className="eyebrow">KÜÇÜK BİR NOT</span><h2>Yeni yazılardan haberin olsun.</h2></div>
+              <a href="mailto:hello@betweenlines.blog?subject=Yeni%20yazılardan%20haberdar%20olmak%20istiyorum">Bana yaz <ArrowUpRight size={16} /></a>
+            </section>
+          </>
+        )}
+
+        <footer className="site-footer">
+          <a className="footer-wordmark" href="#" onClick={() => navigate('home')}>BETWEEN <i>LINES</i></a>
+          <span>© 2026 BETWEEN LINES. KELİMELERLE, ÖZENLE.</span>
+          <button onClick={() => navigate('admin')}>Yönetim paneli <ArrowUpRight size={13} /></button>
+        </footer>
+      </main>
+    </div>
+  )
+}
+
+export default App
