@@ -21,6 +21,7 @@ npm run preview
 - Duyarlı blog ana sayfası; kategori filtresi ve yazı araması
 - Yazı detayları, hakkımda sayfası ve favorilere ekleme
 - Okuma günlüğü: “Currently reading” ve “Last read” kitap rafları, okuma yüzdesi ve bitirme tarihi
+- Başlangıç okuma rafı: José Saramago'nun *Körlük* kitabı ve Han Kang'ın *Vejetaryen* kitabı
 - Yerel yönetim önizlemesi: yazı ve kitap ekleme, düzenleme, silme; yazı taslaklarını yönetme ve yayımlama
 - Yazılar, kitaplar ve favoriler tarayıcının `localStorage` alanında saklanır
 

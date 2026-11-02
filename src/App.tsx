@@ -52,6 +52,28 @@ type ReadingBookDraft = Omit<ReadingBook, 'id'>
 const STORAGE_KEY = 'between-lines-posts'
 const FAVORITES_KEY = 'between-lines-favorites'
 const BOOKS_KEY = 'between-lines-books'
+const BOOKS_SEED_KEY = 'between-lines-books-seeded-v1'
+
+const starterBooks: ReadingBook[] = [
+  {
+    id: 'currently-reading-blindness',
+    title: 'Körlük',
+    author: 'José Saramago',
+    cover: 'https://api.bloomandfresh.com/storage/products/detail_image_750/01M1KDKHNZ43PJHBEES01663SS.png',
+    status: 'currently-reading',
+    progress: 0,
+    date: '',
+  },
+  {
+    id: 'last-read-vegetarian',
+    title: 'Vejetaryen',
+    author: 'Han Kang',
+    cover: 'https://img.kitapyurdu.com/v1/getImage/fn:11983062/wi:500/wh:61cd29240',
+    status: 'last-read',
+    progress: 100,
+    date: '2026-09-25',
+  },
+]
 
 const starterPosts: Post[] = [
   {
@@ -136,8 +158,10 @@ function readFavorites(): string[] {
 }
 
 function readBooks(): ReadingBook[] {
+  const saved = localStorage.getItem(BOOKS_KEY)
+
   try {
-    const parsed: unknown = JSON.parse(localStorage.getItem(BOOKS_KEY) ?? '[]')
+    const parsed: unknown = JSON.parse(saved ?? '[]')
     if (
       Array.isArray(parsed) &&
       parsed.every(
@@ -151,13 +175,19 @@ function readBooks(): ReadingBook[] {
           typeof book.date === 'string',
       )
     ) {
+      if (parsed.length === 0 && localStorage.getItem(BOOKS_SEED_KEY) !== 'true') {
+        localStorage.setItem(BOOKS_SEED_KEY, 'true')
+        return starterBooks
+      }
+      localStorage.setItem(BOOKS_SEED_KEY, 'true')
       return parsed
     }
     console.error('Kayıtlı kitaplar beklenen biçimde değil; boş liste gösteriliyor.')
   } catch (error) {
     console.error('Kayıtlı kitaplar okunamadı; boş liste gösteriliyor.', error)
   }
-  return []
+  localStorage.setItem(BOOKS_SEED_KEY, 'true')
+  return saved ? [] : starterBooks
 }
 
 function BookCover({ book }: { book: ReadingBook }) {
