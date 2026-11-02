@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react'
 import type { User } from '@supabase/supabase-js'
+import blueShellImage from './assets/blue-shell.jpg'
 import { supabase } from './lib/supabase'
 import './App.css'
 
@@ -817,8 +818,8 @@ function App() {
               </div>
               <div className="hero-art">
                 <div className="hero-photo">
-                  <img src="https://images.unsplash.com/photo-1500530855697-b586d89ba3ee?auto=format&fit=crop&w=1200&q=85" alt="Gün batımında sessiz bir sahil manzarası" />
-                  <span className="photo-caption">BİR YERDE, BİR ZAMAN</span>
+                  <img src={blueShellImage} alt="Koyu mavi fonda ışıldayan mavi deniz kabuğu" />
+                  <span className="photo-caption">DENİZİN SESSİZLİĞİ</span>
                 </div>
                 <div className="hero-stamp"><span>EST.</span><strong>20<br />26</strong><i>✳</i></div>
                 <span className="hero-scribble">take your time</span>
@@ -899,8 +900,8 @@ function App() {
 
             <section className="newsletter">
               <div className="newsletter-mark"><Feather size={19} /></div>
-              <div><span className="eyebrow">KÜÇÜK BİR NOT</span><h2>Yeni yazılardan haberin olsun.</h2></div>
-              <a href="mailto:hello@betweenlines.blog?subject=Yeni%20yazılardan%20haberdar%20olmak%20istiyorum">Bana yaz <ArrowUpRight size={16} /></a>
+              <div><span className="eyebrow">İLETİŞİM</span><h2>Bana ulaşın.</h2></div>
+              <a href="mailto:beerencetin@gmail.com">beerencetin@gmail.com <ArrowUpRight size={16} /></a>
             </section>
           </>
         )}

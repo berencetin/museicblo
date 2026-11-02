@@ -289,6 +289,11 @@ a {
 
 .hero-photo img {
   object-position: center 54%;
+  filter: saturate(.92) contrast(.96);
+}
+
+.hero-photo:hover img {
+  filter: saturate(1.04) contrast(1);
 }
 
 .photo-caption {
